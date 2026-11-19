@@ -1,11 +1,10 @@
 from aiogram import Router, F
 from aiogram.types import Message
-
 from services.ai import ask_judge
-from state import active_courts, court_settings
 
 router = Router()
-
+active_courts: dict[int, bool] = {}
+court_settings: dict[int, dict] = {}
 
 @router.message(F.text)
 async def handle_message(message: Message):
@@ -14,7 +13,11 @@ async def handle_message(message: Message):
 
     chat_id = message.chat.id
     is_active = active_courts.get(chat_id, False)
-    mentioned = message.text and f"@{message.bot.username}" in message.text
+    
+    # Берем юзернейм из bot.me
+    bot_username = message.bot.me.username
+    mentioned = message.text and f"@{bot_username}" in message.text
+    
     is_reply_to_bot = (
         message.reply_to_message
         and message.reply_to_message.from_user
@@ -23,16 +26,13 @@ async def handle_message(message: Message):
 
     if not (is_active or mentioned or is_reply_to_bot):
         return
-        
-    # Проверяем, кто судья. Если человек - бот не ведет заседание сам, а просто молчит или отвечает по упоминанию.
-    settings = court_settings.get(chat_id, {})
-    judge_type = settings.get("judge")
-    
-    if judge_type != "AI" and not (mentioned or is_reply_to_bot):
-        return
 
     speaker = message.from_user.full_name
-    
     await message.chat.do("typing")
+    
     response = await ask_judge(speaker, message.text, chat_title=message.chat.title or "")
-    await message.reply(response)
+    
+    try:
+        await message.reply(response, parse_mode=None)
+    except Exception as e:
+        await message.reply(f"Ошибка отправки: {e}")
