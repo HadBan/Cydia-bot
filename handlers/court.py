@@ -4,9 +4,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from keyboards.menus import main_menu, court_types_menu, roles_menu
-from handlers.messages import active_courts, court_settings
+from state import active_courts, court_settings
 
 router = Router()
+
 
 class RoleSetup(StatesGroup):
     waiting_plaintiff = State()
@@ -15,7 +16,6 @@ class RoleSetup(StatesGroup):
 
 @router.callback_query(F.data == "open_court")
 async def open_court(callback: CallbackQuery):
-    # При нажатии на первую кнопку показываем выбор типа суда
     await callback.message.edit_text(
         "🏛 Выберите тип судопроизводства:",
         reply_markup=court_types_menu()
