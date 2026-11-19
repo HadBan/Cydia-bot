@@ -24,6 +24,8 @@ def roles_menu() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="👤 Назначить Истца", callback_data="set_plaintiff"))
     builder.row(InlineKeyboardButton(text="👤 Назначить Ответчика", callback_data="set_defendant"))
+    builder.row(InlineKeyboardButton(text="👨‍⚖️ Назначить Судью (Человек)", callback_data="set_judge_human"))
+    builder.row(InlineKeyboardButton(text="🤖 Назначить Судью (ИИ)", callback_data="set_judge_ai"))
     builder.row(InlineKeyboardButton(text="▶️ Начать заседание", callback_data="start_hearing"))
     builder.row(InlineKeyboardButton(text="❌ Отменить", callback_data="back_to_main"))
     return builder.as_markup()

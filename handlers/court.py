@@ -8,10 +8,10 @@ from state import active_courts, court_settings
 
 router = Router()
 
-
 class RoleSetup(StatesGroup):
     waiting_plaintiff = State()
     waiting_defendant = State()
+    waiting_judge_human = State()
 
 
 @router.callback_query(F.data == "open_court")
@@ -27,7 +27,7 @@ async def open_court(callback: CallbackQuery):
 async def select_type(callback: CallbackQuery):
     court_type = callback.data.split("_")[1]
     chat_id = callback.message.chat.id
-    court_settings[chat_id] = {"type": court_type, "plaintiff": None, "defendant": None}
+    court_settings[chat_id] = {"type": court_type, "plaintiff": None, "defendant": None, "judge": None}
     
     await callback.message.edit_text(
         f"🏛 Тип заседания: {court_type.upper()}\n\nНазначьте участников процесса или начните заседание:",
@@ -50,12 +50,32 @@ async def set_defendant(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+@router.callback_query(F.data == "set_judge_human")
+async def set_judge_human(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(RoleSetup.waiting_judge_human)
+    await callback.message.edit_text("👨‍⚖️ Введите @username или имя судьи-человека (отправьте сообщение в чат):")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "set_judge_ai")
+async def set_judge_ai(callback: CallbackQuery, state: FSMContext):
+    chat_id = callback.message.chat.id
+    if chat_id in court_settings:
+        court_settings[chat_id]["judge"] = "AI"
+    
+    await state.clear()
+    await callback.message.edit_text(
+        "🤖 ИИ-судья назначен.",
+        reply_markup=roles_menu()
+    )
+    await callback.answer()
+
+
 @router.message(RoleSetup.waiting_plaintiff)
 async def process_plaintiff(message: Message, state: FSMContext):
     chat_id = message.chat.id
     if chat_id in court_settings:
         court_settings[chat_id]["plaintiff"] = message.text
-    
     await state.clear()
     await message.answer(f"✅ Истец назначен: {message.text}", reply_markup=roles_menu())
 
@@ -65,9 +85,17 @@ async def process_defendant(message: Message, state: FSMContext):
     chat_id = message.chat.id
     if chat_id in court_settings:
         court_settings[chat_id]["defendant"] = message.text
-        
     await state.clear()
     await message.answer(f"✅ Ответчик назначен: {message.text}", reply_markup=roles_menu())
+
+
+@router.message(RoleSetup.waiting_judge_human)
+async def process_judge_human(message: Message, state: FSMContext):
+    chat_id = message.chat.id
+    if chat_id in court_settings:
+        court_settings[chat_id]["judge"] = message.text
+    await state.clear()
+    await message.answer(f"✅ Судья назначен: {message.text}", reply_markup=roles_menu())
 
 
 @router.callback_query(F.data == "start_hearing")
@@ -76,12 +104,17 @@ async def start_hearing(callback: CallbackQuery):
     active_courts[chat_id] = True
     settings = court_settings.get(chat_id, {})
     
+    judge_info = settings.get("judge") or "не назначен"
+    if judge_info == "AI":
+        judge_info = "ИИ-Судья"
+
     await callback.message.edit_text(
         f"🏛 **Судебное заседание объявляется открытым.**\n"
         f"Тип: {settings.get('type', 'не указан').upper()}\n"
+        f"Судья: {judge_info}\n"
         f"Истец: {settings.get('plaintiff') or 'не назначен'}\n"
         f"Ответчик: {settings.get('defendant') or 'не назначен'}\n\n"
-        "Судья (ИИ) приветствует стороны. Слово предоставляется истцу. Теперь пишите сообщения в чат."
+        "Слово предоставляется истцу. Теперь пишите сообщения в чат."
     )
     await callback.answer()
 
