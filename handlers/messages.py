@@ -14,8 +14,8 @@ async def handle_message(message: Message):
     chat_id = message.chat.id
     is_active = active_courts.get(chat_id, False)
     
-    # Берем юзернейм из bot.me
-    bot_username = message.bot.me.username
+    # Берем сохраненный username
+    bot_username = getattr(message.bot, "my_username", "")
     mentioned = message.text and f"@{bot_username}" in message.text
     
     is_reply_to_bot = (

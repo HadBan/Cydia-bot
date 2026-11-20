@@ -13,9 +13,10 @@ logging.basicConfig(level=logging.INFO)
 async def main():
     bot = Bot(token=BOT_TOKEN)
     
-    # Получаем данные бота (включая username) и сохраняем в bot.me
-    bot_info = await bot.get_me()
-    logging.info(f"Бот запущен: @{bot_info.username}")
+    # Получаем данные бота и сохраняем username
+    me = await bot.me()
+    bot.my_username = me.username
+    logging.info(f"Бот запущен: @{me.username}")
     
     dp = Dispatcher(storage=MemoryStorage())
 
