@@ -24,12 +24,13 @@ async def open_court(callback: CallbackQuery):
 async def select_type(callback: CallbackQuery):
     court_type = callback.data.split("_")[1]
     chat_id = callback.message.chat.id
-    # Теперь мы храним ID вместо строк, чтобы точно знать, кто есть кто
+    # Храним юзернеймы (строки)
     court_settings[chat_id] = {
         "type": court_type, 
-        "plaintiff_id": None, "plaintiff_name": None,
-        "defendant_id": None, "defendant_name": None,
-        "judge": "ИИ-Судья", "duration": 10
+        "plaintiff": None, 
+        "defendant": None,
+        "judge": "ИИ-Судья", 
+        "duration": 10
     }
     case_history[chat_id] = []
     early_termination_votes[chat_id] = set()
@@ -50,32 +51,33 @@ async def set_judge(callback: CallbackQuery):
 @router.callback_query(F.data == "set_plaintiff")
 async def set_plaintiff(callback: CallbackQuery, state: FSMContext):
     await state.set_state(CourtFlow.waiting_plaintiff)
-    await callback.message.edit_text("👤 **Истец, отправьте любое сообщение в чат** (например, «Я истец»), чтобы бот вас запомнил:")
+    await callback.message.edit_text("👤 Введите @username истца (например, @Herodravs):")
     await callback.answer()
 
 @router.callback_query(F.data == "set_defendant")
 async def set_defendant(callback: CallbackQuery, state: FSMContext):
     await state.set_state(CourtFlow.waiting_defendant)
-    await callback.message.edit_text("👤 **Ответчик, отправьте любое сообщение в чат** (например, «Я ответчик»), чтобы бот вас запомнил:")
+    await callback.message.edit_text("👤 Введите @username ответчика (например, @BanHad):")
     await callback.answer()
 
 @router.message(CourtFlow.waiting_plaintiff)
 async def process_plaintiff(message: Message, state: FSMContext):
     chat_id = message.chat.id
     if chat_id in court_settings:
-        court_settings[chat_id]["plaintiff_id"] = message.from_user.id
-        court_settings[chat_id]["plaintiff_name"] = message.from_user.full_name
+        # Убираем @, если пользователь его написал, и переводим в нижний регистр для надежности
+        username = message.text.strip().replace("@", "").lower()
+        court_settings[chat_id]["plaintiff"] = username
     await state.clear()
-    await message.answer(f"✅ Истец назначен: {message.from_user.full_name}", reply_markup=roles_menu())
+    await message.answer(f"✅ Истец назначен: @{username}", reply_markup=roles_menu())
 
 @router.message(CourtFlow.waiting_defendant)
 async def process_defendant(message: Message, state: FSMContext):
     chat_id = message.chat.id
     if chat_id in court_settings:
-        court_settings[chat_id]["defendant_id"] = message.from_user.id
-        court_settings[chat_id]["defendant_name"] = message.from_user.full_name
+        username = message.text.strip().replace("@", "").lower()
+        court_settings[chat_id]["defendant"] = username
     await state.clear()
-    await message.answer(f"✅ Ответчик назначен: {message.from_user.full_name}", reply_markup=roles_menu())
+    await message.answer(f"✅ Ответчик назначен: @{username}", reply_markup=roles_menu())
 
 @router.callback_query(F.data.startswith("time_"))
 async def select_time(callback: CallbackQuery, state: FSMContext):
@@ -105,7 +107,7 @@ async def process_custom_time(message: Message, state: FSMContext):
 @router.callback_query(F.data == "start_hearing")
 async def choose_duration(callback: CallbackQuery):
     chat_id = callback.message.chat.id
-    if not court_settings.get(chat_id, {}).get("plaintiff_id") or not court_settings.get(chat_id, {}).get("defendant_id"):
+    if not court_settings.get(chat_id, {}).get("plaintiff") or not court_settings.get(chat_id, {}).get("defendant"):
         await callback.answer("⚠️ Сначала назначьте истца и ответчика!", show_alert=True)
         return
     await callback.message.edit_text("⏱ Выберите время заседания:", reply_markup=duration_menu())
@@ -118,9 +120,9 @@ async def start_actual_hearing(msg_or_cb, chat_id: int, is_message: bool = False
     text = (
         f"🏛 **Судебное заседание объявлено открытым.**\n"
         f"Судья: ИИ\n"
-        f"Истец: {settings.get('plaintiff_name')}\n"
-        f"Ответчик: {settings.get('defendant_name')}\n\n"
-        f"Участники могут пользоваться кнопками. Бот реагирует только на действия тех, кому они предназначены."
+        f"Истец: @{settings.get('plaintiff')}\n"
+        f"Ответчик: @{settings.get('defendant')}\n\n"
+        f"Кнопки доступны всем, но бот реагирует только на действия назначенных лиц."
     )
     
     if is_message:
@@ -140,8 +142,8 @@ async def court_timer(chat_id: int, minutes: int):
             history_text = "\n".join(case_history.get(chat_id, []))
             settings = court_settings.get(chat_id, {})
             verdict = await ask_judge_for_verdict(
-                plaintiff=settings.get('plaintiff_name', 'Истец'), 
-                defendant=settings.get('defendant_name', 'Ответчик'),
+                plaintiff=f"@{settings.get('plaintiff')}", 
+                defendant=f"@{settings.get('defendant')}",
                 court_type=settings.get('type'), history=history_text, reason="Время истекло."
             )
             from main import bot
@@ -149,21 +151,25 @@ async def court_timer(chat_id: int, minutes: int):
     except asyncio.CancelledError:
         pass
 
-# --- ПРОВЕРКА ПРАВ ДЛЯ КНОПОК ---
+# --- ПРОВЕРКА ПРАВ ДЛЯ КНОПОК (ПО ЮЗЕРНЕЙМУ) ---
+
+def get_username(user) -> str:
+    """Возвращает юзернейм в нижнем регистре без @, либо пустую строку"""
+    return (user.username or "").lower()
 
 @router.callback_query(F.data == "action_protest")
 async def handle_protest(callback: CallbackQuery):
     chat_id = callback.message.chat.id
-    user_id = callback.from_user.id
     settings = court_settings.get(chat_id, {})
+    user_un = get_username(callback.from_user)
     
     # Проверяем, что нажал именно ответчик
-    if user_id != settings.get("defendant_id"):
+    if user_un != settings.get("defendant"):
         await callback.answer("⛔ Протест может заявить только назначенный Ответчик!", show_alert=True)
         return
 
     await callback.answer("Составляем протест...")
-    await callback.message.answer(f"⚖️ Ответчик {callback.from_user.full_name} заявляет протест...")
+    await callback.message.answer(f"⚖️ Ответчик @{user_un} заявляет протест...")
     history_text = "\n".join(case_history.get(chat_id, []))
     protest_text = await ask_judge_for_protest(history_text)
     case_history[chat_id].append(f"ПРОТЕСТ ОТВЕТЧИКА: {protest_text}")
@@ -172,17 +178,17 @@ async def handle_protest(callback: CallbackQuery):
 @router.callback_query(F.data == "action_early")
 async def handle_early(callback: CallbackQuery):
     chat_id = callback.message.chat.id
-    user_id = callback.from_user.id
+    user_un = get_username(callback.from_user)
     settings = court_settings.get(chat_id, {})
     
     # Проверяем, что нажал истец или ответчик
-    if user_id not in [settings.get("plaintiff_id"), settings.get("defendant_id")]:
+    if user_un not in [settings.get("plaintiff"), settings.get("defendant")]:
         await callback.answer("⛔ Только Истец или Ответчик могут завершить заседание досрочно!", show_alert=True)
         return
 
     if chat_id not in early_termination_votes:
         early_termination_votes[chat_id] = set()
-    early_termination_votes[chat_id].add(user_id)
+    early_termination_votes[chat_id].add(callback.from_user.id)
     
     if len(early_termination_votes[chat_id]) >= 2:
         if chat_id in court_tasks and not court_tasks[chat_id].done():
@@ -191,7 +197,7 @@ async def handle_early(callback: CallbackQuery):
         active_courts[chat_id] = False
         history_text = "\n".join(case_history.get(chat_id, []))
         verdict = await ask_judge_for_verdict(
-            plaintiff=settings.get('plaintiff_name'), defendant=settings.get('defendant_name'),
+            plaintiff=f"@{settings.get('plaintiff')}", defendant=f"@{settings.get('defendant')}",
             court_type=settings.get('type'), history=history_text, reason="Досрочное завершение."
         )
         await callback.message.answer("🔨 **Суд вернулся.**\n\n" + verdict, parse_mode=None)
@@ -201,8 +207,6 @@ async def handle_early(callback: CallbackQuery):
 @router.callback_query(F.data == "action_deliberate")
 async def handle_deliberation(callback: CallbackQuery, state: FSMContext):
     chat_id = callback.message.chat.id
-    # Проверка: удаляться может только Судья (в нашем случае ИИ, но нажимать может админ чата)
-    # Для простоты пока разрешим всем, но если нужно - добавим проверку на админа чата.
     
     await callback.answer("Суд удаляется...")
     await state.set_state(CourtFlow.in_deliberation)
@@ -216,7 +220,7 @@ async def handle_deliberation(callback: CallbackQuery, state: FSMContext):
     settings = court_settings.get(chat_id, {})
     history_text = "\n".join(case_history.get(chat_id, []))
     verdict = await ask_judge_for_verdict(
-        plaintiff=settings.get('plaintiff_name'), defendant=settings.get('defendant_name'),
+        plaintiff=f"@{settings.get('plaintiff')}", defendant=f"@{settings.get('defendant')}",
         court_type=settings.get('type'), history=history_text, reason="Суд удалился."
     )
     active_courts[chat_id] = False
