@@ -24,7 +24,7 @@ SYSTEM_PROMPT = """Ты — ИИ-судья в официальном судеб
 async def ask_judge(speaker: str, message: str, chat_title: str = "") -> str:
     context = f"Чат: «{chat_title}»\n[{speaker}]: {message}" if chat_title else f"[{speaker}]: {message}"
     response = await client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": context}
