@@ -9,8 +9,10 @@ from handlers import start, court, messages
 
 logging.basicConfig(level=logging.INFO)
 
+bot = None
 
 async def main():
+    global bot
     bot = Bot(token=BOT_TOKEN)
     me = await bot.me()
     bot.my_username = me.username
@@ -23,7 +25,6 @@ async def main():
     dp.include_router(messages.router)
 
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -29,10 +29,6 @@ async def handle_message(message: Message, state: FSMContext):
         and message.reply_to_message.from_user.id == message.bot.id
     )
 
-    # Игнорируем системные кнопки
-    if message.text in ["⚖️ ПРОТЕСТ", "🛑 ДОСРОЧНО", "🚪 Удалиться в совещательную комнату"]:
-        return
-
     if not (is_active or mentioned or is_reply_to_bot):
         return
 
@@ -44,7 +40,6 @@ async def handle_message(message: Message, state: FSMContext):
     case_history[chat_id].append(f"{speaker}: {text}")
 
     await message.chat.do("typing")
-    
     context_history = "\n".join(case_history[chat_id][-15:])
     response = await ask_judge(context_history, chat_title=message.chat.title or "")
     
